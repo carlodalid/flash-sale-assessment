@@ -9,9 +9,13 @@ design would scale.
 - The sale runs only within a configured start/end window
 - Users can check the sale status and the status of their purchase
 
-![Architecture](docs/architecture.png)
+> This project was built using Matt Pocock's [/grill-me](https://www.aihero.dev/skills-grill-me) skill to agree on every design decision with the agent before writing any code.
 
-> The diagram source is [`docs/architecture.drawio`](docs/architecture.drawio). It has two pages: *Components* and *Purchase flow*.
+---
+
+## System Diagram
+
+![System diagram: User → Express API → Redis (Lua gate + stream) → Worker → Postgres](docs/architecture.png)
 
 ---
 
@@ -125,7 +129,7 @@ effectively exactly-once.
 
 ### What if Redis dies?
 
-- **Persistence.** Redis runs with **AOF `appendfsync everysec`**, so a crash can lose up to about one second of writes. That is the trade-off for throughput (`always` would fsync on every write).
+- **Persistence.** Redis runs with **AOF** `appendfsync everysec`, so a crash can lose up to about one second of writes. That is the trade-off for throughput (`always` would fsync on every write).
 - **Rebuild on start.** If the sale keys are missing, the API rebuilds Redis from Postgres ([`rebuild-redis.ts`](packages/core/src/sale/rebuild-redis.ts)): the sale, the remaining stock (total minus confirmed) and every settled buyer. So the one-per-user rule still holds after data loss.
 - **What can be lost.** Purchases that were still `PENDING` (accepted but not yet persisted) when Redis lost data. Those units return to stock.
 - **In production:** run a replicated, managed Redis (e.g. ElastiCache with Multi-AZ, or MemoryDB, whose transaction log removes the loss window). Also set `REDIS_MIN_REPLICA_ACKS=1`: the API then runs `WAIT` after the gate so a purchase is on a replica before the user gets their 202.
