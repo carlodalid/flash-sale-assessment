@@ -28,6 +28,34 @@ describe('sale status', () => {
     });
   });
 
+  it('is UPCOMING before the window opens', async () => {
+    await startSale(context, {
+      startsAt: new Date(Date.now() + 60_000),
+      endsAt: new Date(Date.now() + 120_000),
+    });
+
+    expect(await getSaleStatus(redis)).toMatchObject({ state: 'UPCOMING', remainingStock: 10 });
+  });
+
+  it('is ENDED after the window closes', async () => {
+    await startSale(context, {
+      startsAt: new Date(Date.now() - 120_000),
+      endsAt: new Date(Date.now() - 60_000),
+    });
+
+    expect(await getSaleStatus(redis)).toMatchObject({ state: 'ENDED' });
+  });
+
+  it("reports Redis' clock as the server time, the same clock the gate uses", async () => {
+    await startSale(context);
+
+    const [seconds] = await redis.time();
+    const status = await getSaleStatus(redis);
+
+    const serverTimeMs = Date.parse(status!.serverTime);
+    expect(Math.abs(serverTimeMs - Number(seconds) * 1000)).toBeLessThan(2_000);
+  });
+
   it('is null when no sale has been set up', async () => {
     await wipeRedis();
 

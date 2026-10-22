@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
-import type { SaleStatusResponse } from '@flash-sale/shared';
+import type { SaleState, SaleStatusResponse } from '@flash-sale/shared';
 import { useSaleStatus } from '../hooks/useSaleStatus';
 import { usePurchase } from '../hooks/usePurchase';
 import { PurchaseNotice } from './PurchaseNotice';
+import { SaleStatusBadge } from './SaleStatusBadge';
 
 export function ProductCard() {
   const query = useSaleStatus();
@@ -15,6 +16,7 @@ export function ProductCard() {
 
   const { sale } = query;
   const canBuy = sale.state === 'ACTIVE' && !purchase.busy;
+  const stockLine = describeStock(sale);
 
   const handleBuy = (event: FormEvent) => {
     event.preventDefault();
@@ -26,11 +28,14 @@ export function ProductCard() {
       <img className="card__image" src={sale.product.imageUrl} alt={sale.product.name} />
 
       <div className="card__body">
+        <SaleStatusBadge state={sale.state} />
         <h1 className="card__title">{sale.product.name}</h1>
         <p className="card__price">{formatPrice(sale.product.priceCents)}</p>
-        <p className={`card__availability card__availability--${sale.state.toLowerCase()}`}>
-          {describeAvailability(sale)}
-        </p>
+
+        <div className="card__sale-details">
+          <p>{describeTiming(sale)}</p>
+          {stockLine && <p className="card__stock">{stockLine}</p>}
+        </div>
 
         <form className="buy-form" onSubmit={handleBuy}>
           <label htmlFor="user-id">Username or email</label>
@@ -43,7 +48,7 @@ export function ProductCard() {
             spellCheck={false}
           />
           <button type="submit" className="button" disabled={!canBuy}>
-            {purchase.busy ? 'Processing…' : 'Buy now'}
+            {purchase.busy ? 'Processing…' : BUTTON_LABELS[sale.state]}
           </button>
         </form>
 
@@ -68,23 +73,45 @@ const EMPTY_STATE_MESSAGES = {
   unavailable: 'The store is unavailable right now. Retrying…',
 } as const;
 
-function describeAvailability(sale: SaleStatusResponse): string {
+/** The button stays visible when disabled, so its label explains why. */
+const BUTTON_LABELS: Record<SaleState, string> = {
+  UPCOMING: 'Not started yet',
+  ACTIVE: 'Buy now',
+  SOLD_OUT: 'Sold out',
+  ENDED: 'Sale ended',
+};
+
+function describeTiming(sale: SaleStatusResponse): string {
   switch (sale.state) {
     case 'UPCOMING':
-      return `Sale starts at ${formatStartTime(new Date(sale.startsAt))}`;
+      return `Starts at ${formatSaleTime(sale.startsAt)}`;
     case 'ACTIVE':
-      return `${sale.remainingStock} of ${sale.totalStock} left`;
+      return `Ends at ${formatSaleTime(sale.endsAt)}`;
     case 'SOLD_OUT':
-      return 'Sold out';
+      return `All ${sale.totalStock} units sold`;
     case 'ENDED':
-      return 'Sale has ended';
+      return `Ended at ${formatSaleTime(sale.endsAt)}`;
   }
 }
 
-function formatStartTime(startsAt: Date): string {
-  const time = startsAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const isToday = startsAt.toDateString() === new Date().toDateString();
-  return isToday ? time : `${time} on ${startsAt.toLocaleDateString([], { dateStyle: 'medium' })}`;
+function describeStock(sale: SaleStatusResponse): string | null {
+  switch (sale.state) {
+    case 'UPCOMING':
+      return `${sale.totalStock} units available`;
+    case 'ACTIVE':
+      return `${sale.remainingStock} of ${sale.totalStock} left`;
+    case 'SOLD_OUT':
+    case 'ENDED':
+      return null;
+  }
+}
+
+/** Shown in the browser's timezone; adds the date when it isn't today. */
+function formatSaleTime(iso: string): string {
+  const date = new Date(iso);
+  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const isToday = date.toDateString() === new Date().toDateString();
+  return isToday ? time : `${time} on ${date.toLocaleDateString([], { dateStyle: 'medium' })}`;
 }
 
 const priceFormatter = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' });

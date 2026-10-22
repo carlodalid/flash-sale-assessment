@@ -7,15 +7,20 @@ import { fromSaleHash } from './sale';
 /**
  * Reads the sale entirely from Redis: every browser polls this endpoint, so it
  * must stay off Postgres. Returns null when no sale has been set up.
+ *
+ * "Now" is Redis' clock, the same one the purchase gate uses, so the state shown
+ * to users always matches what the gate would decide, regardless of the API
+ * server's clock.
  */
-export async function getSaleStatus(redis: Redis, now = new Date()): Promise<SaleStatusResponse | null> {
-  const [saleHash, stock] = (await execTransaction(
-    redis.multi().hgetall(redisKeys.sale).get(redisKeys.stock),
-  )) as [Record<string, string>, string | null];
+export async function getSaleStatus(redis: Redis): Promise<SaleStatusResponse | null> {
+  const [saleHash, stock, [seconds, microseconds]] = (await execTransaction(
+    redis.multi().hgetall(redisKeys.sale).get(redisKeys.stock).time(),
+  )) as [Record<string, string>, string | null, [string, string]];
 
   const sale = fromSaleHash(saleHash);
   if (!sale) return null;
 
+  const now = new Date(Number(seconds) * 1000 + Math.floor(Number(microseconds) / 1000));
   const remainingStock = Math.max(0, Number(stock ?? 0));
 
   return {

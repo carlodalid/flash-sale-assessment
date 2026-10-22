@@ -136,8 +136,9 @@ effectively exactly-once.
 
 ### Other choices
 
-- **One clock.** The sale window is checked against Redis `TIME` inside the script, not the API server's clock.
+- **One clock.** Both the purchase gate and `GET /api/sale` use Redis `TIME`, never the API server's clock. The status a user sees always matches what the gate will decide, and `serverTime` in the response is that same clock.
 - **Sale status never touches Postgres.** `GET /api/sale` is polled by every open browser, so it reads only Redis.
+- **On-time status changes.** The page polls every 2s for stock, and also schedules a refresh for the exact moment the sale opens or closes. It measures that moment against `serverTime`, not the browser's clock, so the badge and **Buy now** button change within about 60 ms of the boundary, even on a device with a wrong clock.
 - **Cluster-ready keys.** Every key shares the `{flash-sale}` hash tag, so they land in one Redis Cluster slot, which a multi-key Lua script requires.
 - **Stateless API.** Any number of instances can run behind a load balancer; all coordination happens in Redis.
 - **No ORM.** Plain SQL migrations and queries keep the data model visible.
