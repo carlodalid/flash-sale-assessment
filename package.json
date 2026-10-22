@@ -1,0 +1,28 @@
+{
+  "name": "flash-sale",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "infra:up": "docker compose up -d postgres redis",
+    "infra:down": "docker compose down",
+    "dev": "pnpm -r --parallel dev",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "sale:setup": "tsx scripts/setup-sale.ts",
+    "stress": "tsx scripts/stress.ts",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck && tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@flash-sale/core": "workspace:*",
+    "@flash-sale/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.2"
+  }
+}

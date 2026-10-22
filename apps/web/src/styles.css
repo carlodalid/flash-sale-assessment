@@ -1,0 +1,198 @@
+:root {
+  --bg: #f4f2ee;
+  --surface: #ffffff;
+  --text: #1c1b19;
+  --text-muted: #6b675f;
+  --border: #e3dfd6;
+  --accent: #d9480f;
+  --accent-hover: #b93c0b;
+  --accent-text: #ffffff;
+  --info-bg: #eaf1fb;
+  --info-text: #1d4f91;
+  --success-bg: #e8f5ec;
+  --success-text: #1e6b3a;
+  --error-bg: #fcebea;
+  --error-text: #a3261c;
+  --radius: 16px;
+
+  color-scheme: light dark;
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151412;
+    --surface: #201f1c;
+    --text: #f2efe9;
+    --text-muted: #a39e94;
+    --border: #34322d;
+    --accent: #f76707;
+    --accent-hover: #ff8534;
+    --info-bg: #1b2a3f;
+    --info-text: #9cc2f5;
+    --success-bg: #17301f;
+    --success-text: #8fd6a6;
+    --error-bg: #3a1a17;
+    --error-text: #f4a49c;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.08);
+}
+
+.card--empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.card__image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--border);
+}
+
+.card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+}
+
+.card__title {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.card__price {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.card__availability {
+  margin: 0;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.card__availability--active {
+  color: var(--success-text);
+}
+
+.card__availability--sold_out,
+.card__availability--ended {
+  color: var(--error-text);
+}
+
+.buy-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.buy-form label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.buy-form input {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.buy-form input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.button {
+  font: inherit;
+  font-weight: 600;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.link-button {
+  align-self: center;
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 4px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-button:disabled {
+  cursor: not-allowed;
+}
+
+.notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.9375rem;
+}
+
+.notice--info {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+
+.notice--success {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.notice--error {
+  background: var(--error-bg);
+  color: var(--error-text);
+}

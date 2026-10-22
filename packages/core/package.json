@@ -1,0 +1,23 @@
+{
+  "name": "@flash-sale/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@flash-sale/shared": "workspace:*",
+    "ioredis": "^5.6.1",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.4",
+    "typescript": "~5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

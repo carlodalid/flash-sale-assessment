@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Limited edition sneaker">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe8cc"/>
+      <stop offset="1" stop-color="#ffc078"/>
+    </linearGradient>
+    <linearGradient id="upper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fa5252"/>
+      <stop offset="1" stop-color="#c92a2a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <ellipse cx="400" cy="458" rx="270" ry="22" fill="#000" opacity="0.12"/>
+
+  <!-- Sole -->
+  <path d="M138 410 C138 392 150 382 170 382 L640 382 C668 382 684 398 684 418 L684 428 C684 442 672 450 656 450 L162 450 C148 450 138 440 138 428 Z" fill="#f8f9fa" stroke="#343a40" stroke-width="6"/>
+  <path d="M150 430 L676 430" stroke="#adb5bd" stroke-width="4"/>
+
+  <!-- Upper -->
+  <path d="M170 382 C176 320 196 262 238 236 C262 222 292 226 312 246 L372 300 C410 326 470 330 540 330 C608 330 664 346 680 382 Z" fill="url(#upper)" stroke="#343a40" stroke-width="6" stroke-linejoin="round"/>
+
+  <!-- Toe cap and heel tab -->
+  <path d="M560 332 C618 334 664 350 680 382 L560 382 C548 362 548 344 560 332 Z" fill="#f8f9fa" stroke="#343a40" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M238 236 C214 252 196 286 186 330 L212 334 C220 296 232 268 252 250 Z" fill="#212529"/>
+
+  <!-- Swoosh-like stripe -->
+  <path d="M232 360 C330 362 420 340 520 288 C452 344 360 380 236 382 Z" fill="#f8f9fa" stroke="#343a40" stroke-width="5" stroke-linejoin="round"/>
+
+  <!-- Laces -->
+  <g stroke="#f8f9fa" stroke-width="10" stroke-linecap="round">
+    <path d="M318 262 L352 248"/>
+    <path d="M342 284 L378 270"/>
+    <path d="M368 304 L404 292"/>
+    <path d="M398 318 L432 308"/>
+  </g>
+
+  <!-- Badge -->
+  <g transform="translate(600 120) rotate(12)">
+    <circle r="64" fill="#212529"/>
+    <text text-anchor="middle" y="-6" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffd43b">LIMITED</text>
+    <text text-anchor="middle" y="22" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#f8f9fa">EDITION</text>
+  </g>
+</svg>
