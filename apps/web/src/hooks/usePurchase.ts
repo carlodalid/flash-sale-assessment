@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { normalizeUserId, type PurchaseStatusResponse } from '@flash-sale/shared';
 import { fetchPurchaseStatus, submitPurchase } from '../api';
 
@@ -8,9 +8,13 @@ const NETWORK_ERROR = 'Could not reach the server. Please try again.';
 export interface PurchaseFlow {
   status: PurchaseStatusResponse | null;
   error: string | null;
-  busy: boolean;
+  /** From the click until the worker has settled the purchase. */
+  confirming: boolean;
+  purchased: boolean;
   buy(rawUserId: string): Promise<void>;
   check(rawUserId: string): Promise<void>;
+  /** Forgets the current result, e.g. because the identifier changed. */
+  reset(): void;
 }
 
 /**
@@ -22,47 +26,74 @@ export function usePurchase(): PurchaseFlow {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Bumped on every new action and on reset, so a response that arrives for an
+  // identifier the user has since changed is ignored instead of shown.
+  const generation = useRef(0);
+
   useEffect(() => {
     if (status?.status !== 'PENDING') return;
 
+    const startedIn = generation.current;
     const timer = setTimeout(async () => {
       try {
-        setStatus(await fetchPurchaseStatus(status.userId));
+        const latest = await fetchPurchaseStatus(status.userId);
+        if (generation.current === startedIn) setStatus(latest);
       } catch {
-        setError(NETWORK_ERROR);
+        if (generation.current === startedIn) setError(NETWORK_ERROR);
       }
     }, PENDING_POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
   }, [status]);
 
-  async function run(rawUserId: string, action: (userId: string) => Promise<void>) {
-    const validation = normalizeUserId(rawUserId);
+  function reset() {
+    generation.current++;
     setStatus(null);
+    setError(null);
+    setBusy(false);
+  }
+
+  async function run(rawUserId: string, action: (userId: string) => Promise<void>) {
+    reset();
+    const validation = normalizeUserId(rawUserId);
     if (!validation.valid) {
       setError(validation.reason);
       return;
     }
 
-    setError(null);
+    const startedIn = generation.current;
     setBusy(true);
     try {
       await action(validation.userId);
     } catch {
-      setError(NETWORK_ERROR);
+      if (generation.current === startedIn) setError(NETWORK_ERROR);
     } finally {
-      setBusy(false);
+      if (generation.current === startedIn) setBusy(false);
     }
   }
 
   const buy = (rawUserId: string) =>
     run(rawUserId, async (userId) => {
+      const startedIn = generation.current;
       const result = await submitPurchase(userId);
+      if (generation.current !== startedIn) return;
       if (result.accepted) setStatus(result.purchase);
       else setError(result.error.message);
     });
 
   const check = (rawUserId: string) =>
-    run(rawUserId, async (userId) => setStatus(await fetchPurchaseStatus(userId)));
+    run(rawUserId, async (userId) => {
+      const startedIn = generation.current;
+      const latest = await fetchPurchaseStatus(userId);
+      if (generation.current === startedIn) setStatus(latest);
+    });
 
-  return { status, error, busy, buy, check };
+  return {
+    status,
+    error,
+    confirming: busy || status?.status === 'PENDING',
+    purchased: status?.status === 'CONFIRMED',
+    buy,
+    check,
+    reset,
+  };
 }

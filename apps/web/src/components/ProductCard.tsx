@@ -15,7 +15,7 @@ export function ProductCard() {
   }
 
   const { sale } = query;
-  const canBuy = sale.state === 'ACTIVE' && !purchase.busy;
+  const canBuy = sale.state === 'ACTIVE' && !purchase.confirming && !purchase.purchased;
   const stockLine = describeStock(sale);
 
   const handleBuy = (event: FormEvent) => {
@@ -42,20 +42,32 @@ export function ProductCard() {
           <input
             id="user-id"
             value={userId}
-            onChange={(event) => setUserId(event.target.value)}
+            onChange={(event) => {
+              setUserId(event.target.value);
+              purchase.reset();
+            }}
             placeholder="e.g. alice@example.com"
             autoComplete="username"
             spellCheck={false}
           />
-          <button type="submit" className="button" disabled={!canBuy}>
-            {purchase.busy ? 'Processing…' : BUTTON_LABELS[sale.state]}
+          <button
+            type="submit"
+            className={purchase.purchased ? 'button button--purchased' : 'button'}
+            disabled={!canBuy}
+            aria-busy={purchase.confirming}
+          >
+            <BuyButtonContent
+              confirming={purchase.confirming}
+              purchased={purchase.purchased}
+              saleLabel={BUTTON_LABELS[sale.state]}
+            />
           </button>
         </form>
 
         <button
           type="button"
           className="link-button"
-          disabled={purchase.busy}
+          disabled={purchase.confirming}
           onClick={() => void purchase.check(userId)}
         >
           Check my purchase
@@ -72,6 +84,19 @@ const EMPTY_STATE_MESSAGES = {
   'no-sale': 'No sale is scheduled yet.',
   unavailable: 'The store is unavailable right now. Retrying…',
 } as const;
+
+/** The purchase's progress takes precedence over the sale's state. */
+function BuyButtonContent(props: { confirming: boolean; purchased: boolean; saleLabel: string }) {
+  if (props.confirming) {
+    return (
+      <>
+        <span className="spinner" aria-hidden="true" />
+        Confirming purchase
+      </>
+    );
+  }
+  return <>{props.purchased ? 'Purchased' : props.saleLabel}</>;
+}
 
 /** The button stays visible when disabled, so its label explains why. */
 const BUTTON_LABELS: Record<SaleState, string> = {

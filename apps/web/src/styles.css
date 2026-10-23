@@ -181,6 +181,10 @@ body {
 }
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   font: inherit;
   font-weight: 600;
   padding: 12px;
@@ -198,6 +202,57 @@ body {
 .button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* Confirming: still the call to action in progress, so keep it at full strength. */
+.button[aria-busy='true']:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+
+/* A finished purchase, not an unavailable item, so it shouldn't look greyed out. */
+.button--purchased:disabled {
+  opacity: 1;
+  background: var(--success-bg);
+  color: var(--success-text);
+  cursor: default;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .link-button {
