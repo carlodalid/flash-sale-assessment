@@ -1,5 +1,6 @@
+import pg from 'pg';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { findPurchasesForSale } from '../src/db/purchase-repository';
+import { findPurchasesForSale, insertPurchase } from '../src/db/purchase-repository';
 import { PURCHASE_CONSUMER_GROUP, redisKeys } from '../src/redis/keys';
 import { attemptPurchase } from '../src/purchases/purchase-gate';
 import { PurchaseConsumer, type PurchaseConsumerOptions } from '../src/purchases/purchase-consumer';
@@ -86,12 +87,57 @@ describe('purchase consumer', () => {
     expect(await unacknowledgedCount()).toBe(0);
   });
 
-  describe('when persisting keeps failing', () => {
-    const failingConsumer = () =>
+  describe('when Postgres is unavailable', () => {
+    it('keeps retrying until the purchase is persisted', async () => {
+      await attemptPurchase(redis, 'alice');
+      let attempts = 0;
+      const consumer = createConsumer({
+        persistPurchase: async (purchase) => {
+          if (++attempts < 10) throw new Error('connection terminated unexpectedly');
+          await insertPurchase(db, purchase);
+        },
+      });
+
+      const [message] = await queuedMessages();
+      expect(await consumer.settle(message!)).toBe('CONFIRMED');
+
+      expect(attempts).toBe(10);
+      expect(await statusOf('alice')).toBe('CONFIRMED');
+      expect(await redis.get(redisKeys.stock)).toBe('9');
+    });
+
+    it('never returns the unit to stock, as the insert may have committed', async () => {
+      await attemptPurchase(redis, 'alice');
+      const stop = new AbortController();
+      let attempts = 0;
+      // The row is written, but the reply is lost, and Postgres stays unreachable.
+      const consumer = createConsumer({
+        persistPurchase: async (purchase) => {
+          if (++attempts === 1) await insertPurchase(db, purchase);
+          if (attempts === 20) stop.abort();
+          throw new Error('connection terminated unexpectedly');
+        },
+      });
+
+      await expect(consumer.processNextBatch(stop.signal)).rejects.toThrow(/abort/i);
+
+      const rows = await findPurchasesForSale(db, sale.id);
+      expect(rows).toMatchObject([{ userId: 'alice', status: 'CONFIRMED' }]);
+      expect(await redis.get(redisKeys.stock)).toBe('9');
+      expect(await statusOf('alice')).toBe('PENDING');
+      expect(await redis.xlen(redisKeys.deadLetterStream)).toBe(0);
+      // Left for another worker to reclaim.
+      expect(await unacknowledgedCount()).toBe(1);
+    });
+  });
+
+  describe('when Postgres rejects the purchase outright', () => {
+    const rejectingConsumer = () =>
       createConsumer({
-        maxAttempts: 3,
         persistPurchase: async () => {
-          throw new Error('database unavailable');
+          throw Object.assign(new pg.DatabaseError('invalid input syntax for type uuid', 0, 'error'), {
+            code: '22P02',
+          });
         },
       });
 
@@ -100,7 +146,7 @@ describe('purchase consumer', () => {
       expect(await redis.get(redisKeys.stock)).toBe('9');
 
       const [message] = await queuedMessages();
-      expect(await failingConsumer().settle(message!)).toBe('DEAD_LETTERED');
+      expect(await rejectingConsumer().settle(message!)).toBe('DEAD_LETTERED');
 
       expect(await statusOf('alice')).toBe('FAILED');
       expect(await redis.get(redisKeys.stock)).toBe('10');
@@ -110,7 +156,7 @@ describe('purchase consumer', () => {
     it('acknowledges the message so it is not redelivered', async () => {
       await attemptPurchase(redis, 'alice');
 
-      await failingConsumer().processNextBatch();
+      await rejectingConsumer().processNextBatch();
 
       expect(await unacknowledgedCount()).toBe(0);
     });
@@ -121,7 +167,8 @@ describe('purchase consumer', () => {
     const [staleMessage] = await queuedMessages();
 
     await startSale(context, { totalStock: 5 });
-    const outcome = await createConsumer({ maxAttempts: 2 }).settle(staleMessage!);
+    // The old sale's row is gone, so the insert fails its foreign key.
+    const outcome = await createConsumer().settle(staleMessage!);
 
     expect(outcome).toBe('STALE');
     expect(await redis.get(redisKeys.stock)).toBe('5');

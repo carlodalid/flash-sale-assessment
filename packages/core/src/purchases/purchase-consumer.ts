@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { Redis } from 'ioredis';
+import { isPermanentDatabaseError } from '../db/errors';
 import type { Database } from '../db/pool';
 import { insertPurchase, type PurchaseRow } from '../db/purchase-repository';
 import { describeError, createLogger } from '../logger';
@@ -22,9 +23,9 @@ export interface PurchaseConsumerOptions {
   blockMs?: number;
   /** A message left unacknowledged this long is assumed to belong to a crashed worker. */
   reclaimIdleMs?: number;
-  maxAttempts?: number;
-  /** Base delay between attempts; grows linearly with each attempt. */
+  /** Delay before the first retry; doubles with each attempt up to `maxRetryDelayMs`. */
   retryDelayMs?: number;
+  maxRetryDelayMs?: number;
   /** Seam for tests to simulate a failing database. */
   persistPurchase?: (purchase: PurchaseRow) => Promise<void>;
 }
@@ -46,8 +47,8 @@ export class PurchaseConsumer {
   private readonly batchSize: number;
   private readonly blockMs: number;
   private readonly reclaimIdleMs: number;
-  private readonly maxAttempts: number;
   private readonly retryDelayMs: number;
+  private readonly maxRetryDelayMs: number;
   private readonly persistPurchase: (purchase: PurchaseRow) => Promise<void>;
 
   /**
@@ -62,8 +63,8 @@ export class PurchaseConsumer {
     this.batchSize = options.batchSize ?? 50;
     this.blockMs = options.blockMs ?? 2_000;
     this.reclaimIdleMs = options.reclaimIdleMs ?? 30_000;
-    this.maxAttempts = options.maxAttempts ?? 5;
     this.retryDelayMs = options.retryDelayMs ?? 200;
+    this.maxRetryDelayMs = options.maxRetryDelayMs ?? 5_000;
     this.persistPurchase = options.persistPurchase ?? ((purchase) => insertPurchase(db, purchase));
   }
 
@@ -73,31 +74,42 @@ export class PurchaseConsumer {
 
     while (!signal.aborted) {
       try {
-        await this.processNextBatch();
+        await this.processNextBatch(signal);
       } catch (error) {
-        await this.recoverFromLoopError(error);
+        // Aborting interrupts a retry on purpose; its message stays unacknowledged
+        // and another worker reclaims it.
+        if (!signal.aborted) await this.recoverFromLoopError(error);
       }
     }
   }
 
   /** Settles one batch: abandoned messages first, otherwise new ones. Returns the batch size. */
-  async processNextBatch(): Promise<number> {
+  async processNextBatch(signal?: AbortSignal): Promise<number> {
     const reclaimed = await this.reclaimAbandonedMessages();
     const messages = reclaimed.length > 0 ? reclaimed : await this.readNewMessages();
 
     for (const message of messages) {
-      await this.settle(message);
+      await this.settle(message, signal);
     }
     return messages.length;
   }
 
-  async settle(message: PurchaseMessage): Promise<SettlementOutcome> {
+  /**
+   * Retries until the purchase is persisted. The unit is already the buyer's in
+   * Redis, so an outage only delays confirmation; giving up would be wrong too,
+   * because a failed attempt may have committed without us hearing back, and
+   * returning that unit to stock would oversell it.
+   *
+   * Only an error Postgres will repeat on every attempt is dead-lettered.
+   * Aborting `signal` stops retrying and rejects, leaving the message unacknowledged.
+   */
+  async settle(message: PurchaseMessage, signal?: AbortSignal): Promise<SettlementOutcome> {
     for (let attempt = 1; ; attempt++) {
       try {
         await this.confirm(message);
         return 'CONFIRMED';
       } catch (error) {
-        if (attempt >= this.maxAttempts) {
+        if (isPermanentDatabaseError(error)) {
           return this.deadLetter(message, error);
         }
         logger.warn('Persisting purchase failed, retrying', {
@@ -105,9 +117,13 @@ export class PurchaseConsumer {
           attempt,
           error: describeError(error),
         });
-        await sleep(this.retryDelayMs * attempt);
+        await sleep(this.retryDelayFor(attempt), undefined, { signal });
       }
     }
+  }
+
+  private retryDelayFor(attempt: number): number {
+    return Math.min(this.retryDelayMs * 2 ** (attempt - 1), this.maxRetryDelayMs);
   }
 
   private async confirm(message: PurchaseMessage): Promise<void> {

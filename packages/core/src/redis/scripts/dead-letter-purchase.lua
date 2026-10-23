@@ -1,4 +1,5 @@
--- Gives up on a purchase the worker could not persist, atomically:
+-- Gives up on a purchase Postgres rejected outright (so it was never written),
+-- atomically:
 -- marks it FAILED, returns the unit to stock, records it on the dead-letter
 -- stream and acknowledges the original message so it is not redelivered.
 --
