@@ -18,6 +18,7 @@ import {
   type Database,
   type Redis,
 } from '@flash-sale/core';
+import { floorToMinute } from '@flash-sale/shared';
 
 const STOCK = 100;
 const DRAIN_TIMEOUT_MS = 30_000;
@@ -36,12 +37,13 @@ const redis = createRedis(config.redisUrl);
 try {
   await assertApiIsRunning(`http://localhost:${config.apiPort}/healthz`);
 
-  const now = new Date();
+  // Whole minutes like every authored sale; rounding down means it's live straight away.
+  const startsAt = floorToMinute(new Date());
   await setupSale(db, redis, {
     product: { name: 'Stress Test Sneakers', imageUrl: '/product.svg', priceCents: 12_900 },
     totalStock: STOCK,
-    startsAt: now,
-    endsAt: new Date(now.getTime() + 10 * 60_000),
+    startsAt,
+    endsAt: new Date(startsAt.getTime() + 10 * 60_000),
   });
   console.log(`Sale reset with ${STOCK} units. Starting k6...\n`);
 

@@ -51,7 +51,12 @@ pnpm sale:setup --start 2026-10-23T09:00:00Z --end 2026-10-23T09:15:00Z
 pnpm sale:setup --name "Retro Console" --price 199.99 --image /console.jpg
 ```
 
-Defaults: 100 units, starting in 10s, lasting 5 minutes, "Limited Edition Sneakers" at $129.00.
+Defaults: 100 units, starting at the next whole minute, lasting 5 minutes, "Limited Edition Sneakers" at $129.00.
+
+Sale times are always **whole minutes, rounded down**, because the page shows them
+as `HH:MM`. A sale set up at 09:01:30 with `--start-in 40s` opens at 09:02:00, exactly
+when the page says, not at 09:02:10. A start that rounds into the past opens the sale
+immediately, and a sale must last at least one minute.
 
 ---
 
@@ -138,7 +143,8 @@ effectively exactly-once.
 
 - **One clock.** Both the purchase gate and `GET /api/sale` use Redis `TIME`, never the API server's clock. The status a user sees always matches what the gate will decide, and `serverTime` in the response is that same clock.
 - **Sale status never touches Postgres.** `GET /api/sale` is polled by every open browser, so it reads only Redis.
-- **On-time status changes.** The page polls every 2s for stock, and also schedules a refresh for the exact moment the sale opens or closes. It measures that moment against `serverTime`, not the browser's clock, so the badge and **Buy now** button change within about 60 ms of the boundary, even on a device with a wrong clock.
+- **On-time status changes.** The page schedules a refresh for the exact moment the sale opens or closes. It measures that moment against `serverTime`, not the browser's clock, so the badge and **Buy now** button change within about 60 ms of the boundary, even on a device with a wrong clock. It also refreshes when the tab becomes visible, because browsers throttle timers in background tabs.
+- **Polling only for stock.** Since the boundary refreshes handle timing, polling just keeps the stock count fresh: every 5s while the sale is live, every 30s otherwise.
 - **Cluster-ready keys.** Every key shares the `{flash-sale}` hash tag, so they land in one Redis Cluster slot, which a multi-key Lua script requires.
 - **Stateless API.** Any number of instances can run behind a load balancer; all coordination happens in Redis.
 - **No ORM.** Plain SQL migrations and queries keep the data model visible.
@@ -153,7 +159,7 @@ effectively exactly-once.
 | Worker throughput | Run more workers in the same consumer group. Redis spreads messages across them. |
 | Single hot stock key (~50–100k ops/s) | Split stock across N counters (N keys) on different shards, or put a **waiting room** in front that admits users at a controlled rate. |
 | Bots and abuse | Real authentication, rate limiting per user/IP, CAPTCHA, and the waiting room above. |
-| Status polling load | Server-sent events or WebSockets, or a CDN with a short cache for `GET /api/sale`. |
+| Status polling load | Polling already depends on the sale state (5s live, 30s otherwise). Next: a CDN with a ~1s cache for `GET /api/sale`, so viewers share one response, or server-sent events. |
 
 ### Out of scope (deliberately)
 

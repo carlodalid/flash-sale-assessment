@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SaleStatusResponse } from '@flash-sale/shared';
 import { fetchSale } from '../api';
 
-const POLL_INTERVAL_MS = 2_000;
+/** While live, polling keeps the stock count fresh; otherwise little changes. */
+const LIVE_POLL_INTERVAL_MS = 5_000;
+const IDLE_POLL_INTERVAL_MS = 30_000;
 /** Lands the boundary refresh just after the transition rather than just before it. */
 const BOUNDARY_MARGIN_MS = 50;
 /** Longest delay `setTimeout` supports (~24.8 days); further boundaries are left to polling. */
@@ -15,8 +17,9 @@ export type SaleQuery =
   | { kind: 'ready'; sale: SaleStatusResponse };
 
 /**
- * Keeps the sale status current: polls for stock changes, and refreshes exactly
- * when the sale opens or closes so the page doesn't lag the transition by a poll.
+ * Keeps the sale status current. Opening and closing are handled by a refresh
+ * scheduled for the exact moment, so polling only has to keep the stock count
+ * fresh: often while the sale is live, rarely otherwise.
  */
 export function useSaleStatus(): SaleQuery {
   const [query, setQuery] = useState<SaleQuery>({ kind: 'loading' });
@@ -33,8 +36,21 @@ export function useSaleStatus(): SaleQuery {
 
   useEffect(() => {
     void refresh();
-    const timer = setInterval(refresh, POLL_INTERVAL_MS);
+  }, [refresh]);
+
+  const pollInterval = pollIntervalFor(query);
+  useEffect(() => {
+    const timer = setInterval(refresh, pollInterval);
     return () => clearInterval(timer);
+  }, [pollInterval, refresh]);
+
+  // Background tabs throttle timers, so a boundary refresh may have been late.
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => document.removeEventListener('visibilitychange', refreshWhenVisible);
   }, [refresh]);
 
   const sale = query.kind === 'ready' ? query.sale : null;
@@ -54,6 +70,12 @@ export function useSaleStatus(): SaleQuery {
   }, [nextBoundary, serverTime, refresh]);
 
   return query;
+}
+
+function pollIntervalFor(query: SaleQuery): number {
+  const isLive = query.kind === 'ready' && query.sale.state === 'ACTIVE';
+  // While the API is unreachable, retry often so the page recovers quickly.
+  return isLive || query.kind === 'unavailable' ? LIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;
 }
 
 /** The next moment the state will change because of time: the start, then the end. */

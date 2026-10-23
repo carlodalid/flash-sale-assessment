@@ -1,5 +1,6 @@
 /**
- * Starts a fresh sale, wiping all previous purchases.
+ * Starts a fresh sale, wiping all previous purchases. Times are rounded down to
+ * the whole minute, matching how the page displays them.
  *
  *   pnpm sale:setup --stock 100 --start-in 30s --duration 5m
  *   pnpm sale:setup --stock 50 --start 2026-10-23T09:00:00Z --end 2026-10-23T09:15:00Z
@@ -15,11 +16,12 @@ import {
   setupSale,
   type NewSale,
 } from '@flash-sale/core';
-import { parseDuration } from '@flash-sale/shared';
+import { floorToMinute, parseDuration } from '@flash-sale/shared';
 
 const DEFAULTS = {
   stock: '100',
-  startIn: '10s',
+  // Rounded down, this is the start of the next whole minute.
+  startIn: '1m',
   duration: '5m',
   name: 'Limited Edition Sneakers',
   price: '129.00',
@@ -54,14 +56,20 @@ function parseSaleOptions(argv: string[], now: Date): NewSale {
     throw new Error(`--price must be a non-negative amount, got "${values.price}".`);
   }
 
-  const startsAt = values.start
-    ? parseDate(values.start, '--start')
-    : new Date(now.getTime() + parseDuration(values['start-in']));
-  const endsAt = values.end
-    ? parseDate(values.end, '--end')
-    : new Date(startsAt.getTime() + parseDuration(values.duration));
+  // A start rounded into the past (e.g. --start-in 10s at 09:01:55) opens the sale immediately.
+  const startsAt = floorToMinute(
+    values.start
+      ? parseDate(values.start, '--start')
+      : new Date(now.getTime() + parseDuration(values['start-in'])),
+  );
+  // The duration is added to the rounded start, so --duration 5m is exactly 5 minutes.
+  const endsAt = floorToMinute(
+    values.end
+      ? parseDate(values.end, '--end')
+      : new Date(startsAt.getTime() + parseDuration(values.duration)),
+  );
   if (endsAt <= startsAt) {
-    throw new Error('The sale must end after it starts.');
+    throw new Error('The sale must last at least one minute (times are rounded down to the whole minute).');
   }
 
   return {
@@ -90,7 +98,7 @@ try {
   await runMigrations(db);
   const sale = await setupSale(db, redis, input);
 
-  console.log('Sale ready. All previous purchases were cleared.');
+  console.log('Sale ready. All previous purchases were cleared. Times are whole minutes.');
   console.table({
     id: sale.id,
     product: sale.product.name,
