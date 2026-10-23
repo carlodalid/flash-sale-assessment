@@ -22,14 +22,14 @@ export function normalizeUserId(raw: unknown): UserIdValidation {
   if (userId.length < USER_ID_MIN_LENGTH || userId.length > USER_ID_MAX_LENGTH) {
     return {
       valid: false,
-      reason: `Identifier must be ${USER_ID_MIN_LENGTH}-${USER_ID_MAX_LENGTH} characters.`,
+      reason: `Username must be ${USER_ID_MIN_LENGTH}-${USER_ID_MAX_LENGTH} characters.`,
     };
   }
 
   if (!ALLOWED_CHARACTERS.test(userId)) {
     return {
       valid: false,
-      reason: 'Identifier may only contain letters, digits and . _ @ + -',
+      reason: 'Username may only contain letters, digits and . _ @ + -',
     };
   }
 
