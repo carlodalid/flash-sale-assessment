@@ -38,7 +38,7 @@ Open http://localhost:5173.
 | `pnpm infra:up` / `pnpm infra:down` | Start / stop Postgres and Redis |
 | `pnpm dev` | Run the API, worker and web app with live reload |
 | `pnpm sale:setup [flags]` | Start a fresh sale. **Wipes all purchases.** |
-| `pnpm test` | Unit tests plus integration tests (needs `infra:up`) |
+| `pnpm test` | Unit tests plus integration and API tests (needs `infra:up`) |
 | `pnpm stress` | k6 burst against the running app, then verify the end state (needs `dev`) |
 | `pnpm typecheck` | Type-check every package |
 | `pnpm db:migrate` | Apply migrations (the API also does this on start) |
@@ -126,7 +126,9 @@ writers scale independently.
 | --- | --- |
 | Worker crashes mid-message | The message stays unacknowledged. Another worker takes it over with `XAUTOCLAIM` after 30s. |
 | Same message processed twice | `INSERT … ON CONFLICT DO NOTHING` makes the second insert a no-op. |
-| Postgres keeps failing | 5 attempts with backoff, then [`dead-letter-purchase.lua`](packages/core/src/redis/scripts/dead-letter-purchase.lua) atomically marks the purchase `FAILED`, **returns the unit to stock**, records it on the dead-letter stream and acknowledges the message. |
+| Postgres is down or unreachable | The worker retries with exponential backoff (capped at 5s) **until it succeeds**. The unit is already the buyer's in Redis, so an outage only delays `CONFIRMED`. Giving up would be wrong: a failed attempt may have committed without the reply arriving, and returning that unit to stock would oversell it. |
+| Postgres rejects the purchase | Only an error Postgres will repeat on every attempt (SQLSTATE class 22 or 23, e.g. a constraint violation) is dead-lettered: [`dead-letter-purchase.lua`](packages/core/src/redis/scripts/dead-letter-purchase.lua) atomically marks the purchase `FAILED`, **returns the unit to stock**, records it on the dead-letter stream and acknowledges the message. Such an error means nothing was written, so returning the unit is safe. |
+| Worker shuts down mid-retry | It stops retrying and leaves the message unacknowledged, for another worker to reclaim. |
 | Sale reset while messages are in flight | The dead-letter script sees the sale ID has changed and only acknowledges the message. Old messages never touch the new sale's stock. |
 
 The result is at-least-once delivery with idempotent processing, which is
@@ -184,10 +186,18 @@ pnpm test
 - **500 concurrent buyers across 10 connections for 10 units → exactly 10 accepted**
 - 50 simultaneous clicks from one user → exactly 1 accepted
 - Worker persists purchases, idempotent redelivery, takeover of a crashed worker's messages
-- Dead-letter path: `FAILED`, stock returned, message acknowledged
+- Postgres outage: retries until it recovers, and never returns a unit whose insert may have committed
+- Dead-letter path for a rejected insert: `FAILED`, stock returned, message acknowledged
 - Stale message after a sale reset
 - Status lookup with Postgres fallback
 - Redis rebuild from Postgres
+
+**API tests** (`apps/api/test`) serve the real Express app on a free port, against the same test database and Redis, and check the HTTP contract with `fetch`:
+
+- `POST /api/purchase`: `202` with a normalised identifier, `409`, `410`, `403`, `400` for invalid identifiers and malformed JSON
+- `GET /api/purchase/:userId`: `404 NOT_FOUND`, then `PENDING` → `CONFIRMED` once the worker runs, `400` for invalid identifiers
+- `GET /api/sale`: live and upcoming states, `404 NO_SALE`, `Cache-Control: no-store`
+- `GET /healthz` and unknown routes
 
 ### Stress test
 

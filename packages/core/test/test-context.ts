@@ -1,4 +1,5 @@
 import { loadEnvFile } from '../src/config';
+import { runMigrations } from '../src/db/migrate';
 import { createDatabase, type Database } from '../src/db/pool';
 import { createRedis, type Redis } from '../src/redis/client';
 import type { NewSale, Sale } from '../src/sale/sale';
@@ -10,6 +11,20 @@ loadEnvFile();
 export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgres://flash:flash@localhost:5432/flash_sale_test';
 export const TEST_REDIS_URL = process.env.TEST_REDIS_URL ?? 'redis://localhost:6379/1';
+
+/** Vitest global setup: brings the test database's schema up to date. */
+export async function migrateTestDatabase(): Promise<void> {
+  const db = createDatabase(TEST_DATABASE_URL);
+  try {
+    await runMigrations(db);
+  } catch (error) {
+    throw new Error(
+      `Could not prepare the test database at ${TEST_DATABASE_URL}. Is \`pnpm infra:up\` running?\n${error}`,
+    );
+  } finally {
+    await db.end();
+  }
+}
 
 export interface TestContext {
   db: Database;
